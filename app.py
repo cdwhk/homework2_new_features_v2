@@ -19,6 +19,7 @@ class User(db.Model):
     def __repr__(self):
         return '<User %r>' % self.id
 
+
 class LeaveRequest(db.Model):
     print("change for git")
     __tablename__ = 'leave_request'
@@ -32,7 +33,7 @@ class LeaveRequest(db.Model):
     def __repr__(self):
         return '<LeaveRequest %r>' % self.id
 
-
+#features added:
 @app.route('/', methods=['POST', 'GET'])
 def index():
     if 'logged_in' not in session or not session['logged_in']:
@@ -135,6 +136,8 @@ def logout():
     session.pop('user_id', None)
     return redirect('/login')
 
+
+#features added:
 @app.route('/delete/<int:id>')
 def delete(id):
     leave_to_delete = LeaveRequest.query.get_or_404(id)
