@@ -1,6 +1,7 @@
 from flask import Flask, render_template, url_for, request, redirect, session
 from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime
+from datetime import datetime, timedelta
+
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///leave_request.db'
@@ -39,7 +40,6 @@ def index():
 
     user_id = session.get('user_id')
 
-
     if request.method == 'POST':
         leave_reason = request.form['reason']
         leave_date_start_str = request.form['date_start']
@@ -49,6 +49,31 @@ def index():
             leave_date_end = datetime.strptime(leave_date_end_str, '%Y-%m-%d')
         except ValueError:
             return 'Please enter valid dates'
+
+        requested_days = (leave_date_end - leave_date_start).days + 1
+
+        year = leave_date_start.year
+        existing_leaves = LeaveRequest.query.filter(
+            LeaveRequest.user_id == user_id,
+            db.extract('year', LeaveRequest.date_start) == year
+        ).all()
+
+        total_days_taken = sum([(lr.date_end - lr.date_start).days + 1 for lr in existing_leaves])
+
+        if total_days_taken + requested_days > 10:
+            return 'You cannot request leave for more than 10 days in a year.'
+
+        two_months_later = datetime.today() + timedelta(days=60)
+        if leave_date_start > two_months_later:
+            return 'You cannot request leave more than two months in advance.'
+
+        existing_leave = LeaveRequest.query.filter_by(
+            user_id=user_id,
+            date_start=leave_date_start
+        ).first()
+
+        if existing_leave:
+            return 'You have already requested leave for this date.'
 
         new_leave = LeaveRequest(
             reason=leave_reason,
@@ -63,11 +88,11 @@ def index():
             return redirect('/')
         except Exception as e:
             print(f"Error: {e}")
-            return 'There was an issue adding your task'
+            return 'There was an issue adding your leave request'
+
     else:
         leaves = LeaveRequest.query.order_by(LeaveRequest.date_created).all()
         return render_template('index.html', leaves=leaves)
-
 
 
 @app.route('/login', methods=['POST', 'GET'])
@@ -114,17 +139,19 @@ def logout():
 def delete(id):
     leave_to_delete = LeaveRequest.query.get_or_404(id)
 
-    # Check if the logged-in user is the owner of the request
     if leave_to_delete.user_id == session.get('user_id'):
-        try:
-            db.session.delete(leave_to_delete)
-            db.session.commit()
-            return redirect('/')
-        except:
-            return 'There was an issue deleting your task'
+        if datetime.utcnow() < leave_to_delete.date_start:
+            try:
+                db.session.delete(leave_to_delete)
+                db.session.commit()
+                return redirect('/')
+            except:
+                return 'There was an issue deleting your leave request'
+        else:
+            return 'You cannot delete a leave request that has already started or passed'
     else:
         return 'You do not have permission to delete this request'
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, port=5001)
